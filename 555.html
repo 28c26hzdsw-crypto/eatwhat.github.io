@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>今天吃什么 🍜</title>
+
+<!-- 【重要】安全密钥配置 - 已填入 -->
+<script>
+window._AMapSecurityConfig = {
+    securityJsCode: '5c43988658990e13ed8e5836b907453e',
+}
+</script>
+
+<!-- 【重要】高德地图 SDK - 已填入 Key -->
+<script src="https://webapi.amap.com/maps?v=2.0&key=5177222ea0bceac5f1e34880a032db3e&plugin=AMap.Geocoder,AMap.PlaceSearch,AMap.Geolocation"></script>
+
+<style>
+/* 全局样式 */
+body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    background: linear-gradient(135deg, #fff5f0, #ffe0cc);
+    padding: 15px;
+    margin: 0;
+    max-width: 600px;
+    margin-left: auto;
+    margin-right: auto;
+    min-height: 100vh;
+}
+
+h1 {
+    text-align: center;
+    color: #ff5722;
+    margin-bottom: 20px;
+    font-size: 1.5rem;
+}
+
+/* 搜索框区域 */
+.search-box {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    background: white;
+    padding: 10px;
+    border-radius: 12px;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+}
+
+input {
+    flex: 1;
+    padding: 10px 12px;
+    border-radius: 8px;
+    border: 1px solid #eee;
+    background: #f9f9f9;
+    font-size: 14px;
+    outline: none;
+}
+
+input:focus {
+    border-color: #ff5722;
+    background: #fff;
+}
+
+button {
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: none;
+    background: #ff5722;
+    color: white;
+    font-weight: bold;
+    font-size: 14px;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    white-space: nowrap;
+}
+
+button:active {
+    opacity: 0.8;
+}
+
+/* 状态提示 */
+#status {
+    text-align: center;
+    color: #666;
+    font-size: 13px;
+    margin: 15px 0;
+    min-height: 20px;
+}
+
+/* 控制按钮栏 */
+#controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+    margin-bottom: 15px;
+}
+
+#controls button {
+    background: white;
+    color: #ff5722;
+    border: 1px solid #ff5722;
+    font-size: 12px;
+    padding: 6px 12px;
+}
+
+#controls button:active {
+    background: #ff5722;
+    color: white;
+}
+
+/* 结果列表 */
+#list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.result-item {
+    background: white;
+    padding: 15px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+    animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+    from { transform: translateY(20px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+}
+
+.result-item b {
+    font-size: 16px;
+    color: #333;
+    display: block;
+    margin-bottom: 6px;
+}
+
+.result-item div {
+    font-size: 13px;
+    color: #666;
+    margin-bottom: 4px;
+    line-height: 1.4;
+}
+
+.tag {
+    display: inline-block;
+    background: #fff3e0;
+    color: #ff5722;
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: bold;
+    margin-top: 6px;
+}
+
+.action-row {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+}
+
+.action-row button {
+    flex: 1;
+    border-radius: 6px;
+    font-size: 12px;
+    padding: 8px 0;
+}
+
+.btn-fav { background: #ffebee; color: #d32f2f; border: 1px solid #ffcdd2; }
+.btn-nav { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+
+/* 地图容器 */
+#map {
+    height: 250px;
+    margin-top: 20px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    border: 2px solid white;
+}
+
+/* 移动端适配 */
+@media (max-width: 400px) {
+    .search-box { flex-direction: column; }
+    button { width: 100%; }
+    #controls { flex-direction: column; }
+    #controls button { width: 100%; }
+}
+</style>
+</head>
+
+<body>
+
+<h1>🍔 今天吃什么？</h1>
+
+<div class="search-box">
+    <input id="addressInput" placeholder="输入地址（如：公司/家）"/>
+    <button onclick="searchByInput()">搜附近</button>
+</div>
+
+<div class="search-box">
+    <input id="aiInput" placeholder="想吃啥？(如：辣/面/便宜)"/>
+    <button onclick="aiRecommend()">✨ 推荐</button>
+</div>
+
+<div id="status">正在初始化地图...</div>
+<div id="controls"></div>
+<ul id="list"></ul>
+<div id="map"></div>
+
+<script>
+// 全局变量
+let map, geocoder, geo, place, allPois = [];
+
+// --- 核心功能函数 ---
+
+function randomPick() {
+    if (allPois.length === 0) return;
+    let r = allPois[Math.floor(Math.random() * allPois.length)];
+    render([r]);
+    document.getElementById('status').innerText = `🎲 随机选中：${r.name}`;
+    // 平滑移动地图
+    map.setCenter(r.location);
+    map.setZoom(16);
+}
+
+function searchByInput() {
+    let addr = document.getElementById('addressInput').value.trim();
+    if (!addr) {
+        alert('请输入地址');
+        return;
+    }
+    document.getElementById('status').innerText = '正在解析地址...';
+    geocoder.getLocation(addr, (status, result) => {
+        if (status === 'complete' && result.geocodes.length > 0) {
+            let loc = result.geocodes[0].location;
+            searchNearby(loc);
+        } else {
+            document.getElementById('status').innerText = '地址解析失败，请重试。';
+        }
+    });
+}
+
+async function fetchAll(location, page = 1, res = []) {
+    return new Promise(resolve => {
+        place.setPageIndex(page);
+        place.searchNearBy('', location, 800, (status, result) => {
+            if (status === 'complete' && result.poiList && result.poiList.pois) {
+                let pois = result.poiList.pois;
+                res = res.concat(pois);
+                // 如果返回满50条且页数小于4，继续加载下一页
+                if (pois.length === 50 && page < 4) {
+                    resolve(fetchAll(location, page + 1, res));
+                } else {
+                    resolve(res);
+                }
+            } else {
+                resolve(res);
+            }
+        });
+    });
+}
+
+async function searchNearby(loc) {
+    document.getElementById('status').innerText = '正在寻找美食...';
+    map.setCenter(loc);
+    
+    let pois = await fetchAll(loc);
+    
+    // 过滤掉非餐饮类
+    allPois = pois.filter(p => {
+        const name = p.name || '';
+        const type = p.type || '';
+        return !['KTV', '酒店', '理发', '美容', '健身'].some(k => name.includes(k) || type.includes(k));
+    });
+
+    if (allPois.length === 0) {
+        document.getElementById('status').innerText = '附近没找到合适的餐厅，换个地方试试？';
+        document.getElementById('controls').innerHTML = '';
+        document.getElementById('list').innerHTML = '';
+        map.clearMap();
+        return;
+    }
+
+    document.getElementById('status').innerText = `找到 ${allPois.length} 家美食`;
+    renderControls();
+    render(allPois);
+}
+
+function renderControls() {
+    document.getElementById('controls').innerHTML = `
+        <button onclick="sortBy('距离')">📏 最近</button>
+        <button onclick="sortBy('价格')">💰 便宜</button>
+        <button onclick="filterType('快餐')">🍔 快餐</button>
+        <button onclick="filterType('正餐')">🍲 正餐</button>
+        <button onclick="filterType('饮品')">🥤 饮品</button>
+        <button onclick="showFav()">❤️ 收藏</button>
+        <button onclick="randomPick()">🎲 随机</button>
+    `;
+}
+
+function getType(p) {
+    const t = p.type || '';
+    if (t.includes('快餐')) return '快餐';
+    if (t.includes('餐厅')) return '正餐';
+    if (t.includes('饮品')) return '饮品';
+    if (t.includes('小吃')) return '小吃';
+    return '美食';
+}
+
+function render(list) {
+    let ul = document.getElementById('list');
+    ul.innerHTML = '';
+    map.clearMap();
+
+    if (list.length === 0) {
+        ul.innerHTML = '<li style="text-align:center;color:#999;padding:20px;">暂无结果</li>';
+        return;
+    }
+
+    list.forEach(p => {
+        let cost = p.biz_ext?.cost || '--';
+        let distance = p.distance ? Math.round(p.distance) + 'm' : '--';
+        let typeTag = getType(p);
+        
+        // 生成导航链接 (高德 URI)
+        let navUrl = `https://uri.amap.com/navigation?to=${p.location.lng},${p.location.lat}&toName=${encodeURIComponent(p.name)}`;
+
+        let li = document.createElement('li');
+        li.className = 'result-item';
+        li.innerHTML = `
+            <b>${p.name}</b>
+            <div>📍 ${p.address}</div>
+            <div>💰 人均: ¥${cost} &nbsp;|&nbsp; 🚶 距离: ${distance}</div>
+            <span class="tag">${typeTag}</span>
+            <div class="action-row">
+                <button class="btn-fav" onclick='saveFav("${encodeURIComponent(JSON.stringify(p))}")'>❤️ 收藏</button>
+                <a href="${navUrl}" target="_blank" style="flex:1;text-decoration:none;"><button class="btn-nav">🧭 导航</button></a>
+            </div>
+        `;
+        ul.appendChild(li);
+
+        // 添加地图标记
+        let marker = new AMap.Marker({
+            position: p.location,
+            title: p.name
+        });
+        marker.setMap(map);
+    });
+
+    // 自适应视野
+    if (list.length > 0) {
+        map.setFitView();
+    }
+}
+
+function sortBy(type) {
+    let list = [...allPois];
+    if (type === '距离') {
+        list.sort((a, b) => (a.distance || 99999) - (b.distance || 99999));
+    } else if (type === '价格') {
+        list.sort((a, b) => {
+            let costA = parseInt(a.biz_ext?.cost) || 9999;
+            let costB = parseInt(b.biz_ext?.cost) || 9999;
+            return costA - costB;
+        });
+    }
+    render(list);
+    document.getElementById('status').innerText = `已按"${type}"排序`;
+}
+
+function filterType(type) {
+    let filtered = allPois.filter(p => getType(p) === type);
+    if (filtered.length === 0) {
+        alert('该分类下暂无餐厅');
+        return;
+    }
+    render(filtered);
+    document.getElementById('status').innerText = `筛选结果：${type} (${filtered.length}家)`;
+}
+
+function saveFav(encodedP) {
+    try {
+        let p = JSON.parse(decodeURIComponent(encodedP));
+        let favs = JSON.parse(localStorage.getItem('myFoodFavs') || '[]');
+        
+        // 避免重复收藏
+        if (!favs.some(item => item.id === p.id)) {
+            favs.push(p);
+            localStorage.setItem('myFoodFavs', JSON.stringify(favs));
+            alert('✅ 已加入收藏夹');
+        } else {
+            alert('这家店已经在收藏夹里啦');
+        }
+    } catch (e) {
+        alert('收藏失败，请重试');
+    }
+}
+
+function showFav() {
+    let favs = JSON.parse(localStorage.getItem('myFoodFavs') || '[]');
+    if (favs.length === 0) {
+        alert('收藏夹是空的，先去收藏几家店吧！');
+        return;
+    }
+    render(favs);
+    document.getElementById('status').innerText = `我的收藏 (${favs.length}家)`;
+    // 清空地图标记，因为收藏夹可能不在当前视野
+    map.clearMap(); 
+}
+
+function aiRecommend() {
+    let k = document.getElementById('aiInput').value.trim();
+    if (!k) {
+        alert('请输入想吃的关键词，例如：火锅、面条、便宜');
+        return;
+    }
+    
+    let result = allPois.filter(p => 
+        (p.name && p.name.includes(k)) || 
+        (p.type && p.type.includes(k))
+    );
+
+    if (result.length > 0) {
+        render(result);
+        document.getElementById('status').innerText = `为您找到 ${result.length} 家与"${k}"相关的店`;
+    } else {
+        // 如果没找到，随机推荐一家并提示
+        if (allPois.length > 0) {
+            let randomOne = [allPois[Math.floor(Math.random() * allPois.length)]];
+            render(randomOne);
+            alert(`没找到完全匹配"${k}"的店，不如试试这家随机推荐的？`);
+        } else {
+            alert('没找到相关店铺，试试别的关键词？');
+        }
+    }
+}
+
+// --- 初始化逻辑 ---
+
+function initApp() {
+    // 双重检查 AMap 是否加载成功
+    if (typeof AMap === 'undefined') {
+        document.getElementById('status').innerText = '❌ 地图服务加载失败，请检查网络或刷新页面。';
+        console.error('AMap SDK failed to load.');
+        return;
+    }
+
+    try {
+        // 初始化地图实例
+        map = new AMap.Map('map', {
+            zoom: 15,
+            center: [116.397428, 39.90923], // 默认北京
+            resizeEnable: true
+        });
+
+        // 初始化插件
+        geocoder = new AMap.Geocoder();
+        geo = new AMap.Geolocation({
+            enableHighAccuracy: true,
+            timeout: 10000,
+            zoomToAccuracy: true
+        });
+        place = new AMap.PlaceSearch({
+            type: '餐饮服务',
+            pageSize: 50,
+            extensions: 'all'
+        });
+
+        document.getElementById('status').innerText = '📍 正在获取您的位置...';
+
+        // 开始定位
+        geo.getCurrentPosition((status, result) => {
+            if (status === 'complete') {
+                searchNearby(result.position);
+            } else {
+                document.getElementById('status').innerText = '⚠️ 定位失败，请手动输入地址或检查浏览器权限。';
+                // 定位失败时，显示默认地图，允许用户手动搜索
+                map.setCenter([116.397428, 39.90923]); 
+            }
+        });
+
+    } catch (error) {
+        console.error(error);
+        document.getElementById('status').innerText = '❌ 初始化出错：' + error.message;
+    }
+}
+
+// 监听页面加载完成
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    // 如果DOM已经准备好，直接执行
+    // 但需要额外等待一下高德脚本执行完毕
+    setTimeout(initApp, 100);
+}
+
+// 兼容高德地图自带的 onLoad 回调机制
+window.onLoad = initApp;
+
+</script>
+
+</body>
+</html>
